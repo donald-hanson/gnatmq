@@ -219,18 +219,25 @@ namespace uPLibrary.Networking.M2Mqtt.Managers
                         count--;
                         MqttSubscription subscription = this.subscribersForRetained.Dequeue();
 
-                        var query = from p in this.retainedMessages
-                                    where (new Regex(subscription.Topic)).IsMatch(p.Key)     // check for topics based also on wildcard with regex
-                                    select p.Value;
-
-                        if (query.Count() > 0)
+                        lock (this.retainedMessages)
                         {
-                            foreach (MqttMsgPublish retained in query)
-                            {
-                                qosLevel = (subscription.QosLevel < retained.QosLevel) ? subscription.QosLevel : retained.QosLevel;
+                            var query =
+                                this.retainedMessages.Where(p => new Regex(subscription.Topic).IsMatch(p.Key))
+                                    .Select(p => p.Value)
+                                    .ToList();
 
-                                // send PUBLISH message to the current subscriber
-                                subscription.Client.Publish(retained.Topic, retained.Message, qosLevel, retained.Retain);
+                            if (query.Any())
+                            {
+                                foreach (MqttMsgPublish retained in query)
+                                {
+                                    qosLevel = (subscription.QosLevel < retained.QosLevel)
+                                        ? subscription.QosLevel
+                                        : retained.QosLevel;
+
+                                    // send PUBLISH message to the current subscriber
+                                    subscription.Client.Publish(retained.Topic, retained.Message, qosLevel,
+                                        retained.Retain);
+                                }
                             }
                         }
                     }
@@ -293,7 +300,7 @@ namespace uPLibrary.Networking.M2Mqtt.Managers
                                     qosLevel = (subscription.QosLevel < publish.QosLevel) ? subscription.QosLevel : publish.QosLevel;
 
                                     // send PUBLISH message to the current subscriber
-                                    subscription.Client.Publish(publish.Topic, publish.Message, qosLevel, publish.Retain);
+                                    subscription.Client?.Publish(publish.Topic, publish.Message, qosLevel, publish.Retain);
                                 }
                             }
 
